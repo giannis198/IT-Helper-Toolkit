@@ -40,6 +40,7 @@ echo  BACKUP ^& SERVER
 echo  ---------------
 echo   8. Backup Helper           (Robocopy backup/verify/compare)
 echo   9. Server Health Check     (AD/DNS/DHCP/IIS/SQL + core)
+echo  10. Self Test              (validate toolkit before use)
 echo.
 echo   0. Exit
 echo.
@@ -55,6 +56,7 @@ if "%CHOICE%"=="6" goto TOOL6
 if "%CHOICE%"=="7" goto TOOL7
 if "%CHOICE%"=="8" goto TOOL8
 if "%CHOICE%"=="9" goto TOOL9
+if "%CHOICE%"=="10" goto TOOL10
 if "%CHOICE%"=="0" goto EXIT
 goto MAIN_MENU
 
@@ -153,6 +155,17 @@ if exist "%ROOT%IT_Helper_Server.bat" (
     start /wait "" "%ROOT%IT_Helper_Server.bat"
 ) else (
     echo ERROR: IT_Helper_Server.bat not found in %ROOT%.
+    pause
+)
+goto MAIN_MENU
+
+:TOOL10
+cls
+echo Launching Self Test...
+if exist "%ROOT%IT_Helper_SelfTest.bat" (
+    start /wait "" "%ROOT%IT_Helper_SelfTest.bat"
+) else (
+    echo ERROR: IT_Helper_SelfTest.bat not found in %ROOT%.
     pause
 )
 goto MAIN_MENU
