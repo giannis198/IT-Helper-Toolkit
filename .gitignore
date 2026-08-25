@@ -1,0 +1,24 @@
+# OS generated files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+*.lnk
+
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# PowerShell/Batch temporary files
+*.tmp
+*.temp
+*.log
+
+# Reports output (generated at runtime)
+C:\ITHelper\Reports\
+
+# Windows specific
+*.bak
+*.old
