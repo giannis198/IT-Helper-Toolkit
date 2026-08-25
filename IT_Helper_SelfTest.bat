@@ -60,7 +60,7 @@ if not exist "%ITH_PS%" (
 )
 
 rem ---------- Run ----------
-powershell -NoProfile -ExecutionPolicy Bypass -File "%ITH_PS%" %ITH_MODE% -DoneFlag "%ITH_FLAG%" 2>"%ITH_ERR%"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ITH_PS%" %ITH_MODE% -DoneFlag "%ITH_FLAG%" -Root "%~dp0" 2>"%ITH_ERR%"
 set "ITH_RC=%errorlevel%"
 
 rem Allow filesystem to flush the DoneFlag file before checking
@@ -98,6 +98,8 @@ param(
     [Parameter(Position = 0)]
     [ValidateSet('menu', 'quick', 'full', 'payload', 'env')]
     [string]$Mode = 'full',
+
+    [string]$Root,
 
     # Explicit flag path handed over by the launcher. Travels as a
     # command-line argument, so it survives the UAC boundary; falls back
@@ -365,12 +367,21 @@ function Section-CoreCommands {
         Test-PSCommand -Name $c -Command "$c -? 2>\$null"
     }
 
-    # External commands
+# External commands
     $extCmds = 'pnputil.exe','robocopy.exe','sfc.exe','dism.exe','netsh.exe',
-        'ipconfig.exe','chkdsk.exe','arp.exe','route.exe','net.exe','sc.exe','reg.exe','wmic.exe'
+        'ipconfig.exe','chkdsk.exe','arp.exe','route.exe','net.exe','sc.exe','reg.exe'
 
     foreach ($c in $extCmds) {
         Test-Command -Name $c -Category 'EXTERNAL COMMANDS' -Test {
+            $null = & $c /? 2>$null
+            return $true
+        }
+    }
+
+# Optional/legacy commands (INFO only, not FAIL)
+    $optCmds = 'wmic.exe'
+    foreach ($c in $optCmds) {
+        Test-Command -Name $c -Category 'OPTIONAL/LEGACY' -Test {
             $null = & $c /? 2>$null
             return $true
         }
@@ -381,7 +392,8 @@ function Section-ToolFiles {
     $script:CurrentGroup = 'TOOL FILES'
     Log ''; Log ('=' * 56) DarkCyan; Log ('  TOOL FILES') Cyan; Log ('=' * 56) DarkCyan
 
-    $root = $env:ROOT
+    $root = $Root
+    if (-not $root) { $root = $env:ITH_ROOT }
     if (-not $root) { $root = (Get-Location).Path + '\' }
 
     $tools = @(
@@ -409,6 +421,7 @@ function Section-PayloadValidation {
     Log ''; Log ('=' * 56) DarkCyan; Log ('  EMBEDDED PAYLOAD SYNTAX VALIDATION') Cyan; Log ('=' * 56) DarkCyan
 
     $root = $env:ROOT
+    if (-not $root) { $root = $env:ITH_ROOT }
     if (-not $root) { $root = (Get-Location).Path + '\' }
 
     $toolList = @(
@@ -423,21 +436,11 @@ function Section-PayloadValidation {
         @{Name='Server';            File='IT_Helper_Server.bat'}
     )
 
-    $toolList = @(
-        @{Name='Network';           File='IT_Helper_Network.bat'},
-        @{Name='PC Support';        File='IT_Helper_PC_Support.bat'},
-        @{Name='Printer';           File='IT_Helper_Printer.bat'},
-        @{Name='RDP';               File='IT_Helper_RDP.bat'},
-        @{Name='Windows Repair';    File='IT_Helper_WindowsRepair.bat'},
-        @{Name='Backup';            File='IT_Helper_Backup.bat'},
-        @{Name='Network Scanner';   File='IT_Helper_NetworkScanner.bat'},
-        @{Name='Device';            File='IT_Helper_Device.bat'},
-        @{Name='Server';            File='IT_Helper_Server.bat'}
-    )
     foreach ($t in $toolList) {
         $full = Join-Path $root $t.File
         if (Test-Path -LiteralPath $full) {
             Validate-Payload -ToolName $t.Name -BatPath $full
+            Test-BatStructure -ToolName $t.Name -BatPath $full
         } else {
             Log ("  [SKIP] {0} - file not found" -f $t.Name) Yellow
             Add-Summary ("Payload: {0}" -f $t.Name) 'SKIP' 'File missing'
