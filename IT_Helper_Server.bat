@@ -70,7 +70,6 @@ if not exist "%ITH_PS%" (
 
 rem ---------- Run ----------
 powershell -NoProfile -ExecutionPolicy Bypass -File "%ITH_PS%" %ITH_MODE% -DoneFlag "%ITH_FLAG%" 2>"%ITH_ERR%"
-ping 127.0.0.1 -n 2 >nul
 set "ITH_RC=%errorlevel%"
 
 rem ---------- Crash guard: if the tool died, DO NOT close ----------

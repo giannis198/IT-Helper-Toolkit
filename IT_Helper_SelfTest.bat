@@ -198,14 +198,13 @@ function Test-FileExists {
 
 function Test-PSCommand {
     param(
-        [string]$Name,
-        [string]$Command
+        [string]$Name
     )
     $script:CurrentGroup = 'POWERSHELL CMDLETS'
     try {
-        $null = & powershell.exe -NoProfile -Command $Command 2>$null
+        $cmd = Get-Command -Name $Name -ErrorAction Stop
         Log ("  [PASS] {0}" -f $Name) Green
-        Add-Summary $Name 'PASS' ''
+        Add-Summary $Name 'PASS' $cmd.CommandType
     } catch {
         Log ("  [FAIL] {0} - {1}" -f $Name, $_.Exception.Message) Red
         Add-Summary $Name 'FAIL' $_.Exception.Message
@@ -228,7 +227,6 @@ function Validate-Payload {
             return
         }
         $payload = $content.Substring($idx + $marker.Length)
-        # Save to temp file for parser
         $tmpPath = [System.IO.Path]::GetTempFileName()
         $payload | Set-Content -LiteralPath $tmpPath -Encoding UTF8
         $errs = $null
@@ -247,6 +245,54 @@ function Validate-Payload {
     } catch {
         Log ("  [FAIL] {0} - {1}" -f $ToolName, $_.Exception.Message) Red
         Add-Summary ("Payload: {0}" -f $ToolName) 'FAIL' $_.Exception.Message
+    }
+}
+
+function Test-BatStructure {
+    param(
+        [string]$ToolName,
+        [string]$BatPath
+    )
+    $script:CurrentGroup = 'BATCH STRUCTURE'
+    try {
+        $content = Get-Content -LiteralPath $BatPath -Raw
+        $checks = @(
+            @{Name='@echo off'; Pattern='^@echo off'}
+            @{Name='setlocal'; Pattern='^setlocal'}
+            @{Name='Payload marker'; Pattern='#__PS_PAYLOAD__'}
+            @{Name='Requires'; Pattern='#Requires -Version 5.1'}
+            @{Name='param()'; Pattern='param\('}
+            @{Name='DoneFlag mechanism'; Pattern='ITH_FLAG|WDT_FLAG'}
+            @{Name='Crash guard'; Pattern='not exist.*ITH_FLAG|not exist.*WDT_FLAG'}
+            @{Name='Payload marker unique'; Pattern='#__PS_PAYLOAD__'}
+        )
+        $failCount = 0
+        foreach ($c in $checks) {
+            if ($content -match $c.Pattern) {
+                Log ("  [PASS] {0}: {1}" -f $ToolName, $c.Name) Green
+                Add-Summary ("BAT: {0}" -f $c.Name) 'PASS' ''
+            } else {
+                Log ("  [FAIL] {0}: {1}" -f $ToolName, $c.Name) Red
+                Add-Summary ("BAT: {0}" -f $c.Name) 'FAIL' 'Missing or malformed'
+                $failCount++
+            }
+        }
+        $markers = [regex]::Matches($content, '#__PS_PAYLOAD__').Count
+        if ($markers -eq 1) {
+            Log ("  [PASS] {0}: Single payload marker" -f $ToolName) Green
+            Add-Summary "BAT: Payload Marker Count" 'PASS' ''
+        } else {
+            Log ("  [FAIL] {0}: {1} payload markers (expected 1)" -f $ToolName, $markers) Red
+            Add-Summary "BAT: Payload Marker Count" 'FAIL' ("{0} markers found" -f $markers)
+        }
+        if ($failCount -eq 0 -and $markers -eq 1) {
+            Add-Summary ("BAT Structure: {0}" -f $ToolName) 'PASS' 'All checks passed'
+        } else {
+            Add-Summary ("BAT Structure: {0}" -f $ToolName) 'FAIL' ("{0} checks failed" -f $failCount)
+        }
+    } catch {
+        Log ("  [FAIL] {0} - {1}" -f $ToolName, $_.Exception.Message) Red
+        Add-Summary ("BAT Structure: {0}" -f $ToolName) 'FAIL' $_.Exception.Message
     }
 }
 
@@ -296,7 +342,6 @@ function Complete-Run {
     } else {
         Set-DoneFlag
         try { Stop-Transcript | Out-Null } catch { }
-        # Exit code: 0=PASS, 1=WARN, 2=FAIL, 250=crash
         if ($fail -gt 0) { exit 2 }
         elseif ($warn -gt 0) { exit 1 }
         else { exit 0 }
@@ -309,33 +354,27 @@ function Section-Environment {
     $script:CurrentGroup = 'ENVIRONMENT'
     Log ''; Log ('=' * 56) DarkCyan; Log ('  ENVIRONMENT CHECK') Cyan; Log ('=' * 56) DarkCyan
 
-    # OS Version
     $os = Get-CimInstance Win32_OperatingSystem
     Log ("  OS: {0} (Build {1})" -f $os.Caption.Trim(), $os.BuildNumber) Gray
     Add-Summary 'OS Version' 'INFO' ("{0} build {1}" -f $os.Caption.Trim(), $os.BuildNumber)
 
-    # PowerShell Version
     $psVer = $PSVersionTable.PSVersion
     Log ("  PowerShell: {0}" -f $psVer.ToString()) Gray
     $psOk = $psVer.Major -ge 5
     Log ("  PowerShell 5.1+: {0}" -f $(if ($psOk) { 'PASS' } else { 'FAIL' })) $(if ($psOk) { 'Green' } else { 'Red' })
     Add-Summary 'PowerShell Version' $(if ($psOk) { 'PASS' } else { 'FAIL' }) $psVer.ToString()
 
-    # Admin Rights
     Log ("  Administrator: {0}" -f $(if ($IsAdmin) { 'YES' } else { 'NO' })) $(if ($IsAdmin) { 'Green' } else { 'Red' })
     Add-Summary 'Administrator' $(if ($IsAdmin) { 'PASS' } else { 'FAIL' }) ''
 
-    # System paths
     Log ("  SystemRoot: {0} {1}" -f $env:SystemRoot, $(if (Test-Path -LiteralPath $env:SystemRoot) { '[EXISTS]' } else { '[MISSING]' })) Green
     Log ("  TEMP: {0} {1}" -f $env:TEMP, $(if (Test-Path -LiteralPath $env:TEMP) { '[EXISTS]' } else { '[MISSING]' })) Green
     Log ("  ITHelper: C:\ITHelper {0}" -f $(if (Test-Path -LiteralPath 'C:\ITHelper') { '[EXISTS]' } else { '[MISSING]' })) $(if (Test-Path -LiteralPath 'C:\ITHelper') { 'Green' } else { 'Yellow' })
     Add-Summary 'Core Paths' 'INFO' ''
 
-    # .NET Framework
     try {
         $netVer = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full' -Name Release -ErrorAction Stop
         $release = $netVer.Release
-        # Use if/elseif instead of switch -regex for PS 5.1 compatibility
         if ($release -eq 528040) { $netDesc = '4.8' }
         elseif ($release -eq 461808) { $netDesc = '4.7.2' }
         elseif ($release -eq 461308) { $netDesc = '4.7.1' }
@@ -355,35 +394,56 @@ function Section-CoreCommands {
     $script:CurrentGroup = 'CORE COMMANDS'
     Log ''; Log ('=' * 56) DarkCyan; Log ('  CORE COMMANDS / CMDLETS') Cyan; Log ('=' * 56) DarkCyan
 
-    # PowerShell cmdlets
-    $cmdlets = 'Get-CimInstance','Get-NetAdapter','Get-NetIPConfiguration','Get-PhysicalDisk','Get-PnpDevice',
-        'Get-Printer','Get-PrinterPort','Get-PrinterDriver','Get-PrintJob','Get-WinEvent',
-        'Get-DnsClientServerAddress','Get-NetConnectionProfile','Get-NetRoute','Get-NetNeighbor','Get-DnsServerZone',
-        'Get-DnsServerStatistics','Get-DhcpServerv4Scope','Get-Service','Get-Process','Start-Service','Stop-Service','Restart-Service',
+    $coreCmdlets = 'Get-CimInstance','Get-NetAdapter','Get-NetIPConfiguration','Get-PhysicalDisk','Get-PnpDevice',
+        'Get-WinEvent','Get-Service','Get-Process','Get-NetRoute','Get-NetNeighbor',
+        'Get-DnsClientServerAddress','Get-NetConnectionProfile','Resolve-DnsName','Test-Connection',
+        'Get-Service','Get-Process','Start-Service','Stop-Service','Restart-Service',
         'Disable-NetAdapter','Enable-NetAdapter','Set-DnsClientServerAddress','Resolve-DnsName','Test-Connection',
         'New-Item','Remove-Item','Start-Process','Start-Transcript','Stop-Transcript'
 
-    foreach ($c in $cmdlets) {
-        Test-PSCommand -Name $c -Command "$c -? 2>\$null"
+    foreach ($c in $coreCmdlets) {
+        Test-PSCommand -Name $c
     }
 
-# External commands
+    $optCmdlets = 'Get-Printer','Get-PrinterPort','Get-PrinterDriver','Get-PrintJob',
+        'Get-DnsServerZone','Get-DnsServerStatistics','Get-DhcpServerv4Scope'
+
+    foreach ($c in $optCmdlets) {
+        $script:CurrentGroup = 'OPTIONAL/ROLE-DEPENDENT'
+        try {
+            $cmd = Get-Command -Name $c -ErrorAction Stop
+            Log ("  [INFO] {0} - available ({1})" -f $c, $cmd.CommandType) Cyan
+            Add-Summary $c 'INFO' ("Role-dependent: {0}" -f $cmd.CommandType)
+        } catch {
+            Log ("  [INFO] {0} - not available (role/module not installed)" -f $c) Yellow
+            Add-Summary $c 'INFO' 'Role/module not installed'
+        }
+    }
+
     $extCmds = 'pnputil.exe','robocopy.exe','sfc.exe','dism.exe','netsh.exe',
         'ipconfig.exe','chkdsk.exe','arp.exe','route.exe','net.exe','sc.exe','reg.exe'
 
     foreach ($c in $extCmds) {
-        Test-Command -Name $c -Category 'EXTERNAL COMMANDS' -Test {
-            $null = & $c /? 2>$null
-            return $true
+        try {
+            $cmd = Get-Command -Name $c -CommandType Application -ErrorAction Stop
+            Log ("  [PASS] {0}" -f $c) Green
+            Add-Summary $c 'PASS' $cmd.Source
+        } catch {
+            Log ("  [FAIL] {0} - not found" -f $c) Red
+            Add-Summary $c 'FAIL' 'Executable not found'
         }
     }
 
-# Optional/legacy commands (INFO only, not FAIL)
     $optCmds = 'wmic.exe'
     foreach ($c in $optCmds) {
-        Test-Command -Name $c -Category 'OPTIONAL/LEGACY' -Test {
-            $null = & $c /? 2>$null
-            return $true
+        $script:CurrentGroup = 'OPTIONAL/LEGACY'
+        try {
+            $cmd = Get-Command -Name $c -CommandType Application -ErrorAction Stop
+            Log ("  [INFO] {0} - available (legacy)" -f $c) Cyan
+            Add-Summary $c 'INFO' 'Legacy command available'
+        } catch {
+            Log ("  [INFO] {0} - not available (legacy)" -f $c) Yellow
+            Add-Summary $c 'INFO' 'Legacy command not available'
         }
     }
 }
@@ -420,7 +480,7 @@ function Section-PayloadValidation {
     $script:CurrentGroup = 'PAYLOAD VALIDATION'
     Log ''; Log ('=' * 56) DarkCyan; Log ('  EMBEDDED PAYLOAD SYNTAX VALIDATION') Cyan; Log ('=' * 56) DarkCyan
 
-    $root = $env:ROOT
+    $root = $Root
     if (-not $root) { $root = $env:ITH_ROOT }
     if (-not $root) { $root = (Get-Location).Path + '\' }
 
@@ -452,7 +512,6 @@ function Section-CoreChecks {
     $script:CurrentGroup = 'CORE CHECKS'
     Log ''; Log ('=' * 56) DarkCyan; Log ('  ADDITIONAL CORE CHECKS') Cyan; Log ('=' * 56) DarkCyan
 
-    # Test C:\ITHelper\Reports writable
     try {
         $testDir = 'C:\ITHelper\Reports'
         if (-not (Test-Path $testDir)) { New-Item -ItemType Directory -Path $testDir -Force | Out-Null }
@@ -466,7 +525,6 @@ function Section-CoreChecks {
         Add-Summary 'Reports Directory' 'FAIL' $_.Exception.Message
     }
 
-    # Test transcript capability
     try {
         $testLog = Join-Path $env:TEMP 'selftest_transcript.tmp'
         Start-Transcript -Path $testLog -Force | Out-Null
@@ -479,7 +537,6 @@ function Section-CoreChecks {
         Add-Summary 'Transcript' 'FAIL' $_.Exception.Message
     }
 
-    # Test UAC (if admin)
     if ($IsAdmin) {
         Log '  UAC elevation: ALREADY ADMIN' Green
         Add-Summary 'UAC Elevation' 'PASS' 'Already elevated'
@@ -511,8 +568,6 @@ function Invoke-EnvOnly {
     Section-Environment
 }
 
-# ------------------------- menu ----------------------------------
-
 function Show-Menu {
     while ($true) {
         Clear-Host
@@ -540,8 +595,6 @@ function Show-Menu {
         }
     }
 }
-
-# ------------------------- dispatch ------------------------------
 
 try {
     switch ($Mode) {
