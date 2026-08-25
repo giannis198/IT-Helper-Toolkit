@@ -268,7 +268,12 @@ function Get-DestPath {
     $path = Read-Host $Prompt
     if (-not $path) { return $null }
     $path = $path.Trim('"')
+    # Handle root drive paths (e.g., D:\)
     $parent = Split-Path -Parent $path
+    if (-not $parent) {
+        # Path is a root drive (e.g., D:\) - use the path itself as parent
+        $parent = $path
+    }
     if (-not (Test-Path -LiteralPath $parent)) {
         try { New-Item -ItemType Directory -Path $parent -Force | Out-Null } catch { }
     }
