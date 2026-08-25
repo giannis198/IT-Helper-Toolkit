@@ -63,6 +63,9 @@ rem ---------- Run ----------
 powershell -NoProfile -ExecutionPolicy Bypass -File "%ITH_PS%" %ITH_MODE% -DoneFlag "%ITH_FLAG%" 2>"%ITH_ERR%"
 set "ITH_RC=%errorlevel%"
 
+rem Allow filesystem to flush the DoneFlag file before checking
+ping 127.0.0.1 -n 2 >nul
+
 rem ---------- Crash guard: if the tool died, DO NOT close ----------
 if not exist "%ITH_FLAG%" (
     color CF
