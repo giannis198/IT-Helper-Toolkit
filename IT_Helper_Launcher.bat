@@ -20,23 +20,23 @@ echo   IT HELPER TOOLKIT v1.0
 echo   Modular IT Support Utilities
 echo ============================================================
 echo.
-echo  DIAGNOSTICS & SUPPORT
+echo  DIAGNOSTICS ^& SUPPORT
 echo  --------------------
 echo   1. PC Quick Support        (system snapshot in 30-60 sec)
 echo   2. Network Fixer           (IP/DNS/Winsock/TCP reset + diagnostics)
 echo   3. Network Scanner         (LAN discovery, ping sweep, ports, MAC)
 echo.
-echo  REPAIR & RECOVERY
+echo  REPAIR ^& RECOVERY
 echo  -----------------
 echo   4. Windows Repair Tool     (SFC/DISM/CHKDSK/WU repair)
 echo   5. RDP Troubleshooter      (service/firewall/port/NLA/config)
 echo   6. Printer Fixer           (spooler/queues/drivers/TCP tests)
 echo.
-echo  HARDWARE & DEVICES
+echo  HARDWARE ^& DEVICES
 echo  ------------------
 echo   7. USB / Device Helper     (USB, PnP errors, drivers, storage)
 echo.
-echo  BACKUP & SERVER
+echo  BACKUP ^& SERVER
 echo  ---------------
 echo   8. Backup Helper           (Robocopy backup/verify/compare)
 echo   9. Server Health Check     (AD/DNS/DHCP/IIS/SQL + core)
